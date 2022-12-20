@@ -1,11 +1,8 @@
-const fetch = require("node-fetch");
 const fs = require("fs");
 var path = require("path");
-const readline = require("readline");
-const prompts = require("prompts");
 
 const SESSION_COOKIE =
-    "YOUR_SESSION_COOKIE"; // session cookie expires ten years after generation
+    "YOUR_SESSION_COOKIE";
 
 const ensureDirectoryExistence = (filePath) => {
     var dirname = path.dirname(filePath);
@@ -26,7 +23,7 @@ const scrape = async () => {
     const boards = search.results.map((board) => board);
 
     for (let board of boards) {
-        await getImages(board.nid, board.title);
+        await getImages(board.entity_id, board.title);
     }
 };
 
@@ -50,17 +47,27 @@ const getImages = async (boardId, boardName) => {
     }
 };
 
+const getToken = async () => {
+    const { token } = await fetch("https://www.rawpixel.com/api/v1/user/session", {
+        "headers": {
+            "cookie": SESSION_COOKIE,
+        },
+        "method": "POST"
+    }).then(res => res.json())
+
+    return token
+}
+
 const download = async (image, boardTitle) => {
     const { id } = image;
+    const token = await getToken()
 
-    // add case switch for quality
-
-    // use cookie to get download url
-    const response = await fetch(`https://www.rawpixel.com/download/${id}/jpeg`, {
-        method: "POST",
-        headers: {
-            cookie: SESSION_COOKIE,
+    const response = await fetch(`https://www.rawpixel.com/api/v1/image/download/${id}/jpeg`, {
+        "headers": {
+            "x-csrf-token": token,
+            "cookie": SESSION_COOKIE,
         },
+        "method": "POST"
     })
         .then((res) => res.json())
         .catch((err) => console.log(err));
@@ -69,9 +76,17 @@ const download = async (image, boardTitle) => {
 
     ensureDirectoryExistence(fileName);
 
-    const res = await fetch(response.download_url);
+
     const fileStream = fs.createWriteStream(fileName);
-    res.body.pipe(fileStream);
+    const stream = new WritableStream({
+        write(chunk) {
+            fileStream.write(chunk);
+        },
+    });
+    const res = await fetch(response.downloadUrl);
+
+    await res.body.pipeTo(stream);
 };
 
 scrape();
+
